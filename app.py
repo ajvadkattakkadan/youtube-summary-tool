@@ -1,3 +1,16 @@
+# Add these lines at the very top of app.py
+import sys
+import os
+
+# Apply compatibility patches
+try:
+    import app_patch
+except ImportError:
+    pass
+
+# Then the rest of your imports
+from flask import Flask, render_template, request, redirect, url_for, flash, send_file
+# ... rest of your code
 from flask import Flask, render_template, request, redirect, url_for, flash, send_file
 from flask_login import LoginManager, login_user, current_user, logout_user, login_required
 from flask_bcrypt import Bcrypt
