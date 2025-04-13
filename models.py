@@ -1,3 +1,10 @@
+# Add this compatibility fix at the top
+import sqlalchemy
+
+# Fix for SQLAlchemy compatibility
+if not hasattr(sqlalchemy, '__all__'):
+    sqlalchemy.__all__ = []
+
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import UserMixin
 from datetime import datetime
