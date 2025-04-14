@@ -13,22 +13,33 @@ def extract_video_id(url):
 def get_video_info(url):
     """Get information about a YouTube video."""
     try:
+        print(f"Starting get_video_info with URL: {url}")
         yt = YouTube(url)
         video_id = extract_video_id(url)
+        print(f"Video ID: {video_id}")
         
-        # Extra defensive checks for None values
+        # Debug yt object attributes
+        print(f"yt.length type: {type(yt.length) if hasattr(yt, 'length') else 'No length attribute'}")
+        print(f"yt.length value: {yt.length if hasattr(yt, 'length') else 'No length attribute'}")
+        
+        # Super defensive approach - don't even try to use yt.length if it's None
         if not hasattr(yt, 'length') or yt.length is None:
+            print("Length is None or missing, using default duration")
             duration = "0:00"
         else:
             try:
+                print(f"Converting length to int: {yt.length}")
                 duration_sec = int(yt.length)
                 minutes = duration_sec // 60
                 seconds = duration_sec % 60
                 duration = f"{minutes}:{seconds:02d}"
-            except (TypeError, ValueError):
+                print(f"Calculated duration: {duration}")
+            except (TypeError, ValueError) as e:
+                print(f"Error converting length: {e}")
                 duration = "0:00"
         
-        return {
+        # Prepare return dict with safe values
+        result = {
             'title': yt.title if hasattr(yt, 'title') and yt.title is not None else "Unknown Title",
             'channel': yt.author if hasattr(yt, 'author') and yt.author is not None else "Unknown Channel",
             'thumbnail_url': yt.thumbnail_url if hasattr(yt, 'thumbnail_url') and yt.thumbnail_url is not None else "",
@@ -36,9 +47,12 @@ def get_video_info(url):
             'url': url,
             'duration': duration
         }
+        print(f"Returning video info: {result}")
+        return result
     except Exception as e:
-        import logging
-        logging.error(f"Error in get_video_info: {str(e)}")
+        import traceback
+        print(f"Exception in get_video_info: {str(e)}")
+        print(traceback.format_exc())
         raise Exception(f"Failed to get video info: {str(e)}")
 
 def get_transcript(url):
