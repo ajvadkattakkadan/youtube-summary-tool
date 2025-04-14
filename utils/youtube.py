@@ -1,119 +1,65 @@
-import re
+from youtube_transcript_api import YouTubeTranscriptApi, NoTranscriptFound, TranscriptsDisabled
 import logging
-import traceback
-
-from pytubefix import YouTube
-from youtube_transcript_api import YouTubeTranscriptApi
+import re
 
 logging.basicConfig(level=logging.INFO)
 
 def extract_video_id(url: str) -> str:
-    """
-    Extract the video ID from a YouTube URL using a regex that targets 11-character IDs.
-    Returns None if not found.
-    """
+    """Extract the video ID from a YouTube URL using a simple regex."""
     match = re.search(r'(?:v=|/)([0-9A-Za-z_-]{11}).*', url)
     return match.group(1) if match else None
 
-def safe_get_attr(obj, attr_name, default_value):
-    """
-    Safely gets an attribute from obj. 
-    If there's an exception or it's None, return default_value.
-    """
-    try:
-        val = getattr(obj, attr_name, None)
-        if val is None:
-            return default_value
-        return val
-    except Exception as e:
-        logging.warning(f"Failed to retrieve attribute '{attr_name}': {str(e)}")
-        return default_value
-
-def get_video_info(url: str) -> dict:
-    """
-    Get information (title, channel, thumbnail, video_id, url, and duration) for a YouTube video,
-    with extra checks to prevent NoneType or internal pytubefix errors.
-    """
-    try:
-        logging.info(f"--- get_video_info START | URL: {url} ---")
-        yt = YouTube(url)
-
-        video_id = extract_video_id(url)
-        logging.info(f"Extracted video ID: {video_id}")
-
-        # 1) We attempt to retrieve the "title," "author," "thumbnail_url" attributes defensively.
-        video_title = safe_get_attr(yt, 'title', 'Unknown Title')
-        channel_name = safe_get_attr(yt, 'author', 'Unknown Channel')
-        thumbnail_url = safe_get_attr(yt, 'thumbnail_url', '')
-
-        # 2) Attempt to fetch videoDetails.lengthSeconds from player_response
-        raw_length_seconds = None
-        if hasattr(yt, 'player_response'):
-            player_resp = yt.player_response or {}
-            video_details = player_resp.get('videoDetails', {})
-            raw_length_seconds = video_details.get('lengthSeconds', None)
-            logging.info(f"lengthSeconds from player_response: {raw_length_seconds}")
-
-        # 3) Convert lengthSeconds to int, if possible
-        duration_sec = 0
-        if raw_length_seconds is not None:
-            try:
-                duration_sec = int(raw_length_seconds)
-            except (TypeError, ValueError):
-                logging.warning("Failed to convert player_response lengthSeconds to int.")
-
-        # 4) If still 0, try yt.length
-        if duration_sec == 0:
-            length_attr = safe_get_attr(yt, 'length', 0)
-            if isinstance(length_attr, (int, float)):
-                duration_sec = length_attr
-            else:
-                try:
-                    duration_sec = int(length_attr)  # final fallback
-                except (TypeError, ValueError):
-                    duration_sec = 0
-
-        # 5) Build mm:ss
-        minutes, seconds = divmod(int(duration_sec), 60)
-        duration_str = f"{minutes}:{seconds:02d}"
-
-        # 6) Compile the final result
-        result = {
-            'title': video_title,
-            'channel': channel_name,
-            'thumbnail_url': thumbnail_url,
-            'video_id': video_id if video_id else "",
-            'url': url,
-            'duration': duration_str
-        }
-
-        logging.info(f"Final video info: {result}")
-        logging.info("--- get_video_info END ---\n")
-        return result
-
-    except Exception as e:
-        logging.error(f"Exception in get_video_info: {str(e)}")
-        logging.error(traceback.format_exc())
-        raise Exception(f"Failed to get video info: {str(e)}")
-
 def get_transcript(url: str) -> str:
     """
-    Get the transcript for a YouTube video by extracting the video ID
-    and using YouTubeTranscriptApi.
+    Get the transcript for a YouTube video in one of the preferred languages.
+    If no valid transcript is found, returns an empty string or raises an exception.
     """
+    video_id = extract_video_id(url)
+    if not video_id:
+        raise ValueError("Invalid YouTube URL or missing video ID.")
+
     try:
-        video_id = extract_video_id(url)
-        if not video_id:
-            raise Exception("Invalid YouTube URL")
+        # 1. Retrieve the available transcripts
+        transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
+        
+        # 2. Decide which languages you want to try, in order of preference
+        preferred_langs = ['en', 'en-IN', 'en-GB', 'en-AU']  # etc.
 
-        # Retrieve transcript list
-        transcript_list = YouTubeTranscriptApi.get_transcript(video_id)
+        # 3. Attempt to fetch a transcript in any of the preferred languages
+        for lang in preferred_langs:
+            try:
+                logging.info(f"Trying language '{lang}' for video {video_id}...")
+                transcript = transcript_list.find_transcript([lang])
+                # If found, fetch it
+                fetched = transcript.fetch()
+                
+                # 4. Combine into one string
+                transcript_text = ' '.join([item['text'] for item in fetched])
+                return transcript_text
+            except NoTranscriptFound:
+                logging.warning(f"No transcript found for language '{lang}'. Trying next...")
 
-        # Combine all transcript pieces into a single text block
-        transcript_text = ' '.join(item['text'] for item in transcript_list)
-        return transcript_text
+        # 5. Optionally, try the "generated" transcript if no manual transcript is available
+        # Because auto-generated transcripts might have a language code like 'en' but be flagged as "generated"
+        try:
+            logging.info("Trying 'generated' transcript for fallback...")
+            auto_generated = transcript_list.find_generated_transcript(preferred_langs)
+            fetched_auto = auto_generated.fetch()
+            transcript_text = ' '.join([item['text'] for item in fetched_auto])
+            return transcript_text
+        except NoTranscriptFound:
+            logging.warning("No generated transcripts found for preferred languages either.")
+
+        # If we exit the loop without returning, no transcripts are available in desired languages
+        logging.error(f"No transcripts found for video {video_id} in preferred languages.")
+        return ""  # or raise an exception if you prefer
+
+    except TranscriptsDisabled:
+        logging.error(f"Transcripts are disabled for this video ({video_id}).")
+        return ""  # or raise an exception
 
     except Exception as e:
         logging.error(f"Failed to get transcript for {url}: {str(e)}")
         raise Exception(f"Failed to get transcript: {str(e)}")
+
 
