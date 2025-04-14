@@ -1,6 +1,7 @@
 from pytubefix import YouTube
 from youtube_transcript_api import YouTubeTranscriptApi
 import re
+import logging
 
 def extract_video_id(url):
     """Extract the video ID from a YouTube URL."""
@@ -15,21 +16,30 @@ def get_video_info(url):
         yt = YouTube(url)
         video_id = extract_video_id(url)
         
+        # Check if length exists and handle possible None values
+        duration_sec = yt.length if hasattr(yt, 'length') and yt.length is not None else 0
+        
         # Format duration
-        duration_sec = yt.length
         minutes = duration_sec // 60
         seconds = duration_sec % 60
         duration = f"{minutes}:{seconds:02d}"
         
+        # Check other attributes
+        title = yt.title if hasattr(yt, 'title') and yt.title is not None else "Unknown Title"
+        author = yt.author if hasattr(yt, 'author') and yt.author is not None else "Unknown Channel"
+        thumbnail_url = yt.thumbnail_url if hasattr(yt, 'thumbnail_url') and yt.thumbnail_url is not None else ""
+        
         return {
-            'title': yt.title,
-            'channel': yt.author,
-            'thumbnail_url': yt.thumbnail_url,
+            'title': title,
+            'channel': author,
+            'thumbnail_url': thumbnail_url,
             'video_id': video_id,
             'url': url,
             'duration': duration
         }
     except Exception as e:
+        # Log the specific error for debugging
+        logging.error(f"Error in get_video_info: {str(e)}")
         raise Exception(f"Failed to get video info: {str(e)}")
 
 def get_transcript(url):
