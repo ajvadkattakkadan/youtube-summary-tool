@@ -114,11 +114,3 @@ def get_transcript(url: str) -> str:
         raise Exception(f"Failed to get transcript: {str(e)}")
 
 
-if __name__ == "__main__":
-    # For testing purposes
-    test_url = "https://www.youtube.com/watch?v=EXAMPLE_ID"
-    try:
-        info = get_video_info(test_url)
-        print("Video Info:", info)
-    except Exception as err:
-        print("An error occurred:", err)
