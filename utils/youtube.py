@@ -8,77 +8,82 @@ from youtube_transcript_api import YouTubeTranscriptApi
 logging.basicConfig(level=logging.INFO)
 
 
-def extract_video_id(url):
+def extract_video_id(url: str) -> str:
     """
-    Extract the video ID from a YouTube URL.
-
-    We look for a pattern of exactly 11 characters (letters, digits, underscores, or hyphens)
-    following 'v=' or a slash. Example:
-    https://www.youtube.com/watch?v=VIDEO_ID
-    https://youtu.be/VIDEO_ID
+    Extract the video ID from a YouTube URL using a regex that targets 11-character IDs.
+    Returns None if not found.
     """
-    video_id_match = re.search(r'(?:v=|/)([0-9A-Za-z_-]{11}).*', url)
-    if video_id_match:
-        return video_id_match.group(1)
-    return None
+    match = re.search(r'(?:v=|/)([0-9A-Za-z_-]{11}).*', url)
+    return match.group(1) if match else None
 
 
-def get_video_info(url):
+def get_video_info(url: str) -> dict:
     """
-    Get information about a YouTube video (title, channel, thumbnail, video_id, url, duration).
-    Fallback to '0:00' if video length is missing or invalid.
+    Get information (title, channel, thumbnail, video_id, url, and duration) for a YouTube video,
+    with extra checks to prevent NoneType errors during length extraction.
     """
     try:
-        logging.info(f"Starting get_video_info with URL: {url}")
+        logging.info(f"--- get_video_info START | URL: {url} ---")
         yt = YouTube(url)
 
         video_id = extract_video_id(url)
         logging.info(f"Extracted video ID: {video_id}")
 
-        # Attempt to retrieve video length from PyTube's player_response
-        # as a more reliable fallback than yt.length
-        raw_length_seconds = None
-        if hasattr(yt, 'player_response') and yt.player_response:
-            video_details = yt.player_response.get('videoDetails', {})
-            raw_length_seconds = video_details.get('lengthSeconds', None)
+        # 1) Debug basic yt attributes
+        logging.info(f"yt.title: {getattr(yt, 'title', None)}")
+        logging.info(f"yt.author: {getattr(yt, 'author', None)}")
+        logging.info(f"yt.thumbnail_url: {getattr(yt, 'thumbnail_url', None)}")
+        logging.info(f"yt.length: {getattr(yt, 'length', None)}")
 
-        # 1) Attempt to convert raw_length_seconds
-        duration_sec = None
+        # 2) Debug player_response
+        if hasattr(yt, 'player_response'):
+            logging.info("Checking yt.player_response for videoDetails...")
+            player_resp = yt.player_response
+            # Print top-level keys for debugging
+            logging.info(f"player_response keys: {list(player_resp.keys())}")
+            video_details = player_resp.get('videoDetails', {})
+            logging.info(f"videoDetails keys: {list(video_details.keys())}")
+            raw_length_seconds = video_details.get('lengthSeconds', None)
+            logging.info(f"lengthSeconds from videoDetails: {raw_length_seconds}")
+        else:
+            logging.info("No player_response found in yt object.")
+            raw_length_seconds = None
+
+        # 3) Attempt to parse raw_length_seconds
+        #    If it's still None or fails conversion, set to 0
+        duration_sec = 0
         if raw_length_seconds is not None:
             try:
                 duration_sec = int(raw_length_seconds)
-                logging.info(f"Duration found in player_response: {duration_sec} seconds")
+                logging.info(f"Parsed lengthSeconds into duration_sec={duration_sec}")
             except (TypeError, ValueError):
-                logging.warning("Failed to convert lengthSeconds to int in player_response.")
+                logging.warning("Failed to convert lengthSeconds to int. Falling back to 0.")
 
-        # 2) If still None, fallback to the original yt.length approach
-        if duration_sec is None:
-            if hasattr(yt, 'length') and yt.length is not None:
-                try:
-                    logging.info(f"Converting yt.length to int: {yt.length}")
-                    duration_sec = int(yt.length)
-                except (TypeError, ValueError):
-                    logging.warning("Failed to convert yt.length to int. Defaulting to 0 seconds.")
-                    duration_sec = 0
-            else:
-                logging.info("No valid length found. Defaulting to 0 seconds.")
-                duration_sec = 0
+        # 4) Fallback to yt.length if duration_sec is still 0
+        if duration_sec == 0 and hasattr(yt, 'length') and yt.length is not None:
+            try:
+                logging.info(f"Attempting fallback with yt.length: {yt.length}")
+                duration_sec = int(yt.length)
+                logging.info(f"Converted yt.length to duration_sec={duration_sec}")
+            except (TypeError, ValueError):
+                logging.warning("Failed to convert yt.length to int. Using 0 as final fallback.")
 
-        # Convert final duration in mm:ss format
+        # 5) Convert final duration in mm:ss format
         minutes, seconds = divmod(duration_sec, 60)
-        duration = f"{minutes}:{seconds:02d}"
+        duration_str = f"{minutes}:{seconds:02d}"
 
-        # Prepare a result dict with safe values
+        # 6) Compile results
         result = {
-            'title': yt.title if hasattr(yt, 'title') and yt.title else "Unknown Title",
-            'channel': yt.author if hasattr(yt, 'author') and yt.author else "Unknown Channel",
-            'thumbnail_url': yt.thumbnail_url if hasattr(yt, 'thumbnail_url') and yt.thumbnail_url else "",
+            'title': yt.title if getattr(yt, 'title', None) else "Unknown Title",
+            'channel': yt.author if getattr(yt, 'author', None) else "Unknown Channel",
+            'thumbnail_url': yt.thumbnail_url if getattr(yt, 'thumbnail_url', None) else "",
             'video_id': video_id if video_id else "",
             'url': url,
-            'duration': duration
+            'duration': duration_str
         }
 
-        logging.info(f"Returning video info: {result}")
+        logging.info(f"Final video info: {result}")
+        logging.info("--- get_video_info END ---\n")
         return result
 
     except Exception as e:
@@ -87,7 +92,7 @@ def get_video_info(url):
         raise Exception(f"Failed to get video info: {str(e)}")
 
 
-def get_transcript(url):
+def get_transcript(url: str) -> str:
     """
     Get the transcript for a YouTube video by extracting the video ID
     and using YouTubeTranscriptApi.
@@ -107,3 +112,13 @@ def get_transcript(url):
     except Exception as e:
         logging.error(f"Failed to get transcript for {url}: {str(e)}")
         raise Exception(f"Failed to get transcript: {str(e)}")
+
+
+if __name__ == "__main__":
+    # For testing purposes
+    test_url = "https://www.youtube.com/watch?v=EXAMPLE_ID"
+    try:
+        info = get_video_info(test_url)
+        print("Video Info:", info)
+    except Exception as err:
+        print("An error occurred:", err)
