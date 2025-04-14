@@ -16,29 +16,28 @@ def get_video_info(url):
         yt = YouTube(url)
         video_id = extract_video_id(url)
         
-        # Check if length exists and handle possible None values
-        duration_sec = yt.length if hasattr(yt, 'length') and yt.length is not None else 0
-        
-        # Format duration
-        minutes = duration_sec // 60
-        seconds = duration_sec % 60
-        duration = f"{minutes}:{seconds:02d}"
-        
-        # Check other attributes
-        title = yt.title if hasattr(yt, 'title') and yt.title is not None else "Unknown Title"
-        author = yt.author if hasattr(yt, 'author') and yt.author is not None else "Unknown Channel"
-        thumbnail_url = yt.thumbnail_url if hasattr(yt, 'thumbnail_url') and yt.thumbnail_url is not None else ""
+        # Extra defensive checks for None values
+        if not hasattr(yt, 'length') or yt.length is None:
+            duration = "0:00"
+        else:
+            try:
+                duration_sec = int(yt.length)
+                minutes = duration_sec // 60
+                seconds = duration_sec % 60
+                duration = f"{minutes}:{seconds:02d}"
+            except (TypeError, ValueError):
+                duration = "0:00"
         
         return {
-            'title': title,
-            'channel': author,
-            'thumbnail_url': thumbnail_url,
-            'video_id': video_id,
+            'title': yt.title if hasattr(yt, 'title') and yt.title is not None else "Unknown Title",
+            'channel': yt.author if hasattr(yt, 'author') and yt.author is not None else "Unknown Channel",
+            'thumbnail_url': yt.thumbnail_url if hasattr(yt, 'thumbnail_url') and yt.thumbnail_url is not None else "",
+            'video_id': video_id if video_id is not None else "",
             'url': url,
             'duration': duration
         }
     except Exception as e:
-        # Log the specific error for debugging
+        import logging
         logging.error(f"Error in get_video_info: {str(e)}")
         raise Exception(f"Failed to get video info: {str(e)}")
 
