@@ -94,56 +94,19 @@ def get_video_info(url: str) -> dict:
         logging.error(traceback.format_exc())
         raise Exception(f"Failed to get video info: {str(e)}")
 
-def get_transcript(url: str) -> str:
-    """
-    Get the transcript for a YouTube video in one of the preferred languages.
-    If no valid transcript is found, returns an empty string or raises an exception.
-    """
-    video_id = extract_video_id(url)
-    if not video_id:
-        raise ValueError("Invalid YouTube URL or missing video ID.")
-
+def get_transcript(url):
+    """Get the transcript for a YouTube video."""
     try:
-        # 1. Retrieve the available transcripts
-        transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
+        video_id = extract_video_id(url)
+        if not video_id:
+            raise Exception("Invalid YouTube URL")
         
-        # 2. Decide which languages you want to try, in order of preference
-        preferred_langs = ['en', 'en-IN', 'en-GB', 'en-AU']  # etc.
-
-        # 3. Attempt to fetch a transcript in any of the preferred languages
-        for lang in preferred_langs:
-            try:
-                logging.info(f"Trying language '{lang}' for video {video_id}...")
-                transcript = transcript_list.find_transcript([lang])
-                # If found, fetch it
-                fetched = transcript.fetch()
-                
-                # 4. Combine into one string
-                transcript_text = ' '.join([item['text'] for item in fetched])
-                return transcript_text
-            except NoTranscriptFound:
-                logging.warning(f"No transcript found for language '{lang}'. Trying next...")
-
-        # 5. Optionally, try the "generated" transcript if no manual transcript is available
-        # Because auto-generated transcripts might have a language code like 'en' but be flagged as "generated"
-        try:
-            logging.info("Trying 'generated' transcript for fallback...")
-            auto_generated = transcript_list.find_generated_transcript(preferred_langs)
-            fetched_auto = auto_generated.fetch()
-            transcript_text = ' '.join([item['text'] for item in fetched_auto])
-            return transcript_text
-        except NoTranscriptFound:
-            logging.warning("No generated transcripts found for preferred languages either.")
-
-        # If we exit the loop without returning, no transcripts are available in desired languages
-        logging.error(f"No transcripts found for video {video_id} in preferred languages.")
-        return ""  # or raise an exception if you prefer
-
-    except TranscriptsDisabled:
-        logging.error(f"Transcripts are disabled for this video ({video_id}).")
-        return ""  # or raise an exception
-
+        # Get the transcript
+        transcript_list = YouTubeTranscriptApi.get_transcript(video_id)
+        
+        # Combine all transcript pieces into one text
+        transcript_text = ' '.join([item['text'] for item in transcript_list])
+        
+        return transcript_text
     except Exception as e:
-        logging.error(f"Failed to get transcript for {url}: {str(e)}")
         raise Exception(f"Failed to get transcript: {str(e)}")
-
