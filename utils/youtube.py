@@ -95,18 +95,44 @@ def get_video_info(url: str) -> dict:
         raise Exception(f"Failed to get video info: {str(e)}")
 
 def get_transcript(url):
-    """Get the transcript for a YouTube video."""
-    try:
-        video_id = extract_video_id(url)
-        if not video_id:
-            raise Exception("Invalid YouTube URL")
+    """Get the transcript for a YouTube video with retry logic."""
+    import time
+    import random
+    
+    max_retries = 3
+    retry_delay = 2
+    
+    for attempt in range(max_retries):
+        try:
+            video_id = extract_video_id(url)
+            if not video_id:
+                raise Exception("Invalid YouTube URL")
+            
+            # Get the transcript
+            transcript_list = YouTubeTranscriptApi.get_transcript(video_id)
+            
+            # Combine all transcript pieces into one text
+            transcript_text = ' '.join([item['text'] for item in transcript_list])
+            
+            return transcript_text
         
-        # Get the transcript
-        transcript_list = YouTubeTranscriptApi.get_transcript(video_id)
-        
-        # Combine all transcript pieces into one text
-        transcript_text = ' '.join([item['text'] for item in transcript_list])
-        
-        return transcript_text
-    except Exception as e:
-        raise Exception(f"Failed to get transcript: {str(e)}")
+        except Exception as e:
+            error_message = str(e)
+            
+            # Check if it's a rate limiting error
+            if "429" in error_message and "Too Many Requests" in error_message:
+                if attempt < max_retries - 1:
+                    # Add jitter to avoid synchronized retries
+                    sleep_time = retry_delay * (2 ** attempt) + random.uniform(0, 1)
+                    time.sleep(sleep_time)
+                    continue
+                else:
+                    raise Exception("YouTube is rate limiting requests. Please try again later.")
+            
+            # Check if it's a missing transcript error
+            elif "Could not retrieve a transcript" in error_message:
+                raise Exception("This video doesn't have subtitles or closed captions available. Please try a different video.")
+            
+            # Other errors
+            else:
+                raise Exception(f"Failed to get transcript: {error_message}")
