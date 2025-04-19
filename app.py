@@ -22,7 +22,8 @@ from forms import RegistrationForm, LoginForm
 from utils.youtube import get_video_info, get_transcript
 from utils.summarizer import generate_summary
 from utils.pdf_generator import create_pdf
-
+from utils.youtube_api import get_video_info
+from utils.youtube import get_transcript
 # Load environment variables
 load_dotenv()
 
